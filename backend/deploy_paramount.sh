@@ -213,21 +213,27 @@ echo "Checking pods..."
 kubectl get pods -l app=fastapi
 kubectl get pods -l app=redis
 
-# Get service URL
+
+# Testing minikube tunnel 
 echo "Getting fastapi-service URL..."
+# Start minikube tunnel in the background
+minikube tunnel > /dev/null 2>&1 &
+TUNNEL_PID=$!
+sleep 5 # Wait for tunnel to establish
 SERVICE_URL=$(minikube service fastapi-service --url)
 echo "Service URL: $SERVICE_URL"
-
 # Test the app
 echo "Testing /task/test_device endpoint..."
 curl -s "$SERVICE_URL/task/test_device" | jq . || echo "Warning: jq not installed, install with 'sudo apt install jq'"
 TASK_ID=$(curl -s "$SERVICE_URL/task/test_device" | jq -r .task_id 2>/dev/null || echo "")
 if [ -n "$TASK_ID" ]; then
-  echo "Testing /task/status/$TASK_ID endpoint..."
-  curl -s "$SERVICE_URL/task/status/$TASK_ID" | jq . || echo "Warning: jq not installed"
+    echo "Testing /task/status/$TASK_ID endpoint..."
+    curl -s "$SERVICE_URL/task/status/$TASK_ID" | jq . || echo "Warning: jq not installed"
 else
-  echo "Warning: Failed to retrieve task_id."
+    echo "Warning: Failed to retrieve task_id."
 fi
+# Stop tunnel
+kill $TUNNEL_PID 2>/dev/null || true
 
 # Check task log
 echo "Checking task.log..."
