@@ -5,6 +5,11 @@ set -e
 #---------------------Utility Functions--------------------------------
 
 install_minikube() {
+    echo "Checking for minikube..."
+    if command -v minikube &> /dev/null; then
+        echo "minikube is already installed: $(minikube version --short)"
+        return 0
+    fi
     echo "Installing minikube..."
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
@@ -19,6 +24,12 @@ install_minikube() {
 }
 
 install_kubectl() {
+    echo "Checking for kubectl..."
+    if command -v kubectl  &> /dev/null; then
+        echo "kubectl is already installed: $(kubectl version --client --short)"
+        return 0
+    fi
+
     echo "Installing kubectl..."
 
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
@@ -33,6 +44,11 @@ install_kubectl() {
 }
 
 install_jq() {
+    echo "Checking for jq..."
+    if command -v jq &> /dev/null; then
+        echo "jq is already installed: $(jq --version)"
+        return 0
+    fi
     echo "Installing jq..."
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         sudo apt-get update && sudo apt-get install -y jq
@@ -58,6 +74,8 @@ check_dependencies() {
     fi
 }
 
+#---------------------Clean Section-------------------
+
 if [ "$1" == "clean" ]; then
   docker stop $(docker ps -aq) || true
   docker rm $(docker ps -aq) || true
@@ -68,6 +86,39 @@ if [ "$1" == "clean" ]; then
   rm -rf ~/.minikube
   exit 0
 fi
+
+#---------------------Restart Section--------------------------------
+
+if [ "$1" == "restart" ]; then
+    echo "Restarting Docker and Minikube..."
+    # Fix Docker context
+    echo "Setting Docker context to default..."
+    docker context use default 2>/dev/null || {
+        docker context create default --docker "host=unix:///var/run/docker.sock"
+        docker context use default
+    }
+    # Ensure Docker is running
+    if ! sudo systemctl is-active --quiet docker; then
+        echo "Starting Docker..."
+        sudo systemctl enable docker --now
+    fi
+    # Restart Minikube
+    echo "Restarting Minikube..."
+    minikube delete || true
+    rm -rf ~/.minikube
+    minikube start --driver=docker --memory=4096 --cpus=2
+    # Verify Minikube
+    echo "Verifying Minikube..."
+    minikube status
+    kubectl cluster-info
+    if [ "$(kubectl config current-context)" != "minikube" ]; then
+        echo "Error: kubectl context is not set to minikube."
+        exit 1
+    fi
+    exit 0
+fi
+
+
 
 #---------------------Main Script--------------------------
 # Script to deploy the Paramount FastAPI, Celery, and Kubernetes app
