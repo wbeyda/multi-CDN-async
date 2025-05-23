@@ -118,7 +118,107 @@ if [ "$1" == "restart" ]; then
     exit 0
 fi
 
+#---------------------Rebuild-----------------------------
 
+if [ "$1" == "rebuild" ]; then
+    echo "Rebuilding Docker image fastapi-app:latest..."
+    docker build -t fastapi-app:latest .
+    if [ $? -ne 0 ]; then
+        echo "Error: Docker build failed."
+        exit 1
+    fi
+
+    echo "Loading image to Minikube..."
+    minikube image load fastapi-app:latest
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to load image to Minikube."
+        exit 1
+    fi
+
+    echo "Restarting fastapi-app deployment..."
+    kubectl rollout restart deployment/fastapi-app
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to restart deployment."
+        exit 1
+    fi
+
+    echo "Waiting for deployment to be ready..."
+    kubectl wait --for=condition=available deployment/fastapi-app --timeout=300s
+    if [ $? -ne 0 ]; then
+        echo "Error: Deployment not ready within 5 minutes."
+        exit 1
+    fi
+
+    echo "Rebuild and redeploy completed successfully."
+    exit 0
+fi
+
+#---------------Test-------------------------- 
+if [ "$1" == "test" ]; then
+    echo "Running tests..."
+    source venv/bin/activate
+    pytest tests/test_api.py -v
+    deactivate
+    exit 0
+fi
+
+
+#----------------Port-forward section
+if [ "$1" == "portforward" ]; then
+    echo "Checking for redis-service..."
+    kubectl get service redis-service >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "Error: redis-service not found."
+        exit 1
+    fi
+
+    echo "Checking for fastapi-service..."
+    kubectl get service fastapi-service >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "Error: fastapi-service not found."
+        exit 1
+    fi
+
+    echo "Starting port-forward for redis-service (6379:6379)..."
+    kubectl port-forward service/redis-service 6379:6379 &
+    REDIS_PID=$!
+    if ! ps -p $REDIS_PID >/dev/null; then
+        echo "Error: Failed to start Redis port-forward."
+        exit 1
+    fi
+    echo "Redis port-forward started (PID: $REDIS_PID)."
+
+    echo "Starting port-forward for fastapi-service (8080:80)..."
+    kubectl port-forward service/fastapi-service 8080:80 &
+    FASTAPI_PID=$!
+    if ! ps -p $FASTAPI_PID >/dev/null; then
+        echo "Error: Failed to start FastAPI port-forward."
+        exit 1
+    fi
+    echo "FastAPI port-forward started (PID: $FASTAPI_PID)."
+
+    echo "Port-forwarding active. Press Ctrl+C to stop."
+    trap 'echo "Stopping port-forwarding..."; kill $REDIS_PID $FASTAPI_PID; exit 0' INT
+    wait $REDIS_PID $FASTAPI_PID
+    exit 0
+fi
+
+#----------Start Redis port-forward
+if [ "$1" == "redis" ]; then
+    echo "Starting Redis port-forward..."
+    kubectl port-forward service/redis-service 6379:6379 &
+    echo "Redis port-forward started (PID: $!)."
+    exit 0
+fi
+
+#----------Start FastAPI port-forward
+
+if [ "$1" == "fastapi" ]; then
+    echo "Starting FastAPI port-forward..."
+    kubectl port-forward service/fastapi-service 8080:80 &
+    echo "FastAPI port-forward started (PID: $!)."
+    exit 0
+fi
 
 #---------------------Main Script--------------------------
 # Script to deploy the Paramount FastAPI, Celery, and Kubernetes app
