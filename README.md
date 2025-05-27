@@ -1,6 +1,6 @@
 # Multi CDN Async
 
-### Just run the deploy_paramount.sh file
+### Just run the deploy.sh file
 
 ### The BASH Script Breakdown
 
